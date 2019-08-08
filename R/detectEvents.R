@@ -130,13 +130,19 @@ detectEvents <- function(x,
                                 buildModelAlgo, buildModelControl,
                                 postProcessors, postProcessorControl, ignoreVarianceWarning, edModel)
         newData <- x[(index + windowSize + 1):min(index + windowSize + nIterationsRefit, nrow(x)),,drop=FALSE]
-        p <- predict(edModel,newData)$lastPredictedEvents
+        p <- predict(edModel,newData)
+        edModel$eventHistory <- p$eventHistory
+        p <- p$lastPredictedEvents
         classification <- rbind(classification, p)
         index <- index + nIterationsRefit
     }
     edModel$classification <- classification
     class(edModel) <- "edObject"
     return(edModel)
+}
+
+model_name <- function(x, ...){
+    sub("forecast_", "", class(x)[1])
 }
 
 #' Print an Event Detection Object
@@ -153,10 +159,10 @@ print.edObject <- function(x, ...){
     nModels <- length(x$modelList)
     if(nModels > 1){
         writeLines(paste0("Event Detection Object with ", nModels, " "
-                     , class(x$modelList[[1]])[1], " submodels"))
+                     , model_name(x$modelList[[1]]), " submodels"))
     }else if(nModels == 1){
         writeLines(paste0("Event Detection Object with 1 "
-                     , class(x$modelList[[1]])[1], " submodel"))
+                     , model_name(x$modelList[[1]]), " submodel"))
     }else{
         writeLines("Event Detection Object with no fitted models")
     }
@@ -167,4 +173,39 @@ print.edObject <- function(x, ...){
         nLast <- args$nLast
     }
     print(tail(x$classification, nLast))
+}
+
+#' Plot an Event Detection Object
+#'
+#' @param  x edObject
+#' @param varsToPlot vars
+#' @param ... Additional parameters
+#' @return A Plot
+#' @import ggplot2
+#' @import gridExtra
+#' @import utils
+#' @export
+plot.edObject <- function(x, varsToPlot = names(edObject$classification),...){
+
+    edObject <- x
+    rm(x)
+    varsToPlot <- varsToPlot[-which(varsToPlot=="Event")]
+
+    nPlots <- length(varsToPlot)-1
+    plotList <- list()
+
+    ind <- 0
+    for(p in varsToPlot){
+        ind <- ind + 1
+        plotList[[ind]] <- ggplot2::ggplot(data = data.frame(x = 1:length(edObject$classification[[p]]),
+                                                             y = edObject$classification[[p]])) +
+            ggplot2::geom_point(ggplot2::aes(x = x, y = y,
+                                             colour = !edObject$classification$Event), show.legend = FALSE) +
+            xlab("time-index") + ylab(p)
+    }
+
+
+    nCol <- max(1,floor(sqrt(nPlots)))
+    do.call("grid.arrange", c(plotList, ncol=nCol))
+
 }
